@@ -3,8 +3,6 @@ import re
 import time
 import utilities.isc_scraper as isc
 import utilities.pairings as pairings
-import utilities.scrabble_classes as sc
-import utilities.fileio as io
 import json
 import apsw
 from urllib.request import urlopen
@@ -17,7 +15,7 @@ f.close()
 def create_event():
     day = time.strftime('%A')
     date = time.strftime('%Y-%m-%d')
-    if day == 'Friday':
+    if day == 'Thursday':
         pairing_method = 2
     else:
         pairing_method = 1
@@ -38,22 +36,28 @@ def get_event():
     WHERE date = '{date}'"))
     print('event',m)
     return m[0]
-def get_player_by_discord(discord):
-    cursor=connection.cursor()
-    print('discord',discord)
-    id_query = list(cursor.execute(f"SELECT id FROM players \
-    WHERE UPPER(discord) = '{discord}'"))
-    if len(id_query) >= 1:
-        id = id_query[0][0]
-        return id
-   
-    raise PlayerDoesntExist('Player does not exist, use discord username')
     
-
+def find_player_id(query):
+    cursor = connection.cursor()
+    player_query = list(cursor.execute(
+        f"SELECT id FROM players WHERE \
+        UPPER(discord) LIKE '%{query}%' OR \
+        UPPER(isc) LIKE '%{query}%' OR \
+        UPPER(full_name) LIKE '%{query}%'"
+        ))
+    if len(player_query) == 1:
+        id = player_query[0][0]
+        return id
+    if len(player_query) == 0:
+        raise PlayerDoesntExist('Player does not exist, use discord username')
+    else:
+        raise AmbiguousRequest(
+            f'Please be more specific, \
+            {query} matched more than one player')
 def sign_in(player):
     try:
         event_id = get_event()[0]
-        player_id = get_player_by_discord(player)
+        player_id = find_player_id(player)
         cursor=connection.cursor()
         cursor.execute(f"INSERT OR IGNORE INTO \
         event_attendees(player_id, event_id) VALUES ({player_id},{event_id})")
@@ -61,13 +65,15 @@ def sign_in(player):
     except PlayerDoesntExist as e:
         print(e)
         msg = e
+    except AmbiguousRequest as e:
+        msg = e
     return msg
 
 
 def sign_out(player):
     try:
         event_id = get_event()[0]
-        player_id = get_player_by_discord(player)
+        player_id = find_player_id(player)
         cursor=connection.cursor()
         cursor.execute(f"DELETE from event_attendees \
         WHERE player_id={player_id} AND event_id={event_id}")
@@ -96,7 +102,7 @@ def get_players():
         players = cursor.execute(f"SELECT p.* \
         FROM event_attendees e INNER JOIN players p \
         ON e.player_id = p.id WHERE event_id = {event_id} \
-        ORDER BY p.rating")
+        ORDER BY p.rating DESC")
     elif pairing_method == 2:
         players = cursor.execute(f"SELECT p.* \
         FROM event_attendees e INNER JOIN players p \
@@ -108,7 +114,12 @@ def get_attendance():
     try:
         players = get_players()
         print(players)
-        msg = ','.join([player['first_name'] for player in players])
+        msg = f'```\n{len(players)} players signed in'
+        for i,player in enumerate(players):
+            msg += '{0: <20}\t{1: <12}\t{2: <8}'.format(f'\n\t{i+1}. {player["full_name"]}', \
+            f'rating: {player["rating"]}', \
+            f'rung: {player["rung"]}')
+        msg += '\n```'
     except Exception as e:
         print(e)
         msg = 'Something went wrong'
@@ -121,20 +132,25 @@ def set_byes(groups, num_of_byes, bye_group_number):
     byes = random.sample(groups[bye_group_number], num_of_byes)
     print('byes',byes)
     for i,player in enumerate(byes):
-        cursor.execute(f'UPDATE event_attendees SET bye = {i+1} WHERE player_id = {player["id"]}')
+        cursor.execute(f'UPDATE event_attendees SET bye = {i+1} \
+       WHERE player_id = {player["id"]}')
         
     msg = f"Byes: {', '.join(player['discord'] for player in byes)}\n"
     return msg
 
 def set_player_groups(group, group_number, event_id):
     cursor=connection.cursor()
-    
+    cursor.execute(f'REPLACE INTO groups (event_id, group_number, round_number) \
+    VALUES({event_id},{group_number},1)')
+    group_id_query = cursor.execute(f'SELECT id FROM groups \
+    WHERE event_id = {event_id} \
+    AND group_number = {group_number}')
+    group_id = list(group_id_query)[0][0]
     for player in group:
-        print('this is the player',player)
         player_id = player['id']
-        value_list = f'{group_number},{event_id},{player_id},1' 
+        value_list = f'{group_id},{player_id}' 
         cursor.execute(f'REPLACE INTO \
-        player_groups(group_number, event_id, player_id, round_number) \
+        player_groups(group_id, player_id) \
         VALUES({value_list})')
 
 def create_groups(event_id):
@@ -173,9 +189,10 @@ def create_groups(event_id):
         bye_message = set_byes(groups, 3,bye_group_number)
     for i,group in enumerate(groups):
         group_number = i + 1
-        set_player_groups(group, i, event_id)
+        set_player_groups(group, group_number, event_id)
         
-        msg += f"Group {group_number} {', '.join(player['first_name'] + ' ' + player['last_name'] for player in group)}\n"
+        msg += f"Group {group_number} \
+        {', '.join(player['full_name'] for player in group)}\n"
     msg += bye_message
     return msg
 
@@ -200,7 +217,15 @@ def start_event(given_byes=()):
 
 
 def parse_result(s):
-    
+    event_id, _ = get_event()
+    p2, score_1, p2, score_2 = s.split(' ')
+    player1 = find_player(p1)
+    player2 = find_player(p2)
+    enter_result_query = f'REPLACE INTO results (score_1, score_2, \
+        player1, player2, round, group_id, event_id) \
+        VALUES ({score_1},{score_2},{player1},{player2},{round}, \
+        (SELECT id FROM groups WHERE \
+        event_id = {event_id} AND group_number = {group_number}), {event_id});'
     return message, pairing_message
 
 
@@ -235,7 +260,8 @@ def get_results():
 
 
 def pairings_text():
-    return pairings.get_pairings_text(group_round_number[0], get_scorecards(), players, byes, False, bye_group_number == 0)
+    return pairings.get_pairings_text(group_round_number[0], \
+        get_scorecards(), players, byes, False, bye_group_number == 0)
 
 
 def get_scorecards():
@@ -268,14 +294,17 @@ def update_player_rungs():
     Go out to the club website, read the latest rungs that people are on
     (this information is updated every Thursday after a club session)
     and update the players table.
-    """
     
+    Example line in the json array: 
+    [{"ranking": "59", "player_name": "Linda Slater", "the_date": "2020-04-16"},...] 
+    """
 
     url = "http://www.calgary374.org/json/ladder.php"
     with urlopen(url) as response:
         js = response.read()
 
-    # Example line in the json array: [{"ranking": "59", "player_name": "Linda Slater", "the_date": "2020-04-16"},...]
+    
+
     data = json.loads(js)
 
     
