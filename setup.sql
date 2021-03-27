@@ -1,4 +1,9 @@
 BEGIN TRANSACTION;
+DROP TABLE IF EXISTS "matches";
+CREATE TABLE IF NOT EXISTS "matches" (
+	"id"	integer,
+	PRIMARY KEY("id")
+);
 DROP TABLE IF EXISTS "players";
 CREATE TABLE IF NOT EXISTS "players" (
 	"id"	integer,
@@ -10,11 +15,8 @@ CREATE TABLE IF NOT EXISTS "players" (
 	"rating"	INTEGER,
 	"rung"	INTEGER,
 	"full_name"	VARCHAR(50) DEFAULT NULL,
-	PRIMARY KEY("id")
-);
-DROP TABLE IF EXISTS "matches";
-CREATE TABLE IF NOT EXISTS "matches" (
-	"id"	integer,
+	"current_opponent"	INTEGER,
+	FOREIGN KEY("current_opponent") REFERENCES "players"("id"),
 	PRIMARY KEY("id")
 );
 DROP TABLE IF EXISTS "pairing_methods";
@@ -28,8 +30,8 @@ CREATE TABLE IF NOT EXISTS "events" (
 	"id"	INTEGER,
 	"date"	DATE UNIQUE,
 	"pairing_method"	INTEGER,
-	PRIMARY KEY("id"),
-	FOREIGN KEY("pairing_method") REFERENCES "pairing_methods"("id")
+	FOREIGN KEY("pairing_method") REFERENCES "pairing_methods"("id"),
+	PRIMARY KEY("id")
 );
 DROP TABLE IF EXISTS "results";
 CREATE TABLE IF NOT EXISTS "results" (
@@ -41,12 +43,12 @@ CREATE TABLE IF NOT EXISTS "results" (
 	"group_id"	INTEGER,
 	"player1"	INTEGER,
 	"player2"	INTEGER,
-	PRIMARY KEY("id"),
-	UNIQUE("player1","player2","round"),
-	FOREIGN KEY("group_id") REFERENCES "group"("id"),
 	FOREIGN KEY("event_id") REFERENCES "events"("id"),
+	FOREIGN KEY("group_id") REFERENCES "groups"("id"),
+	FOREIGN KEY("player1") REFERENCES "players"("id"),
 	FOREIGN KEY("player2") REFERENCES "players"("id"),
-	FOREIGN KEY("player1") REFERENCES "players"("id")
+	PRIMARY KEY("id"),
+	UNIQUE("player1","player2","round")
 );
 DROP TABLE IF EXISTS "event_attendees";
 CREATE TABLE IF NOT EXISTS "event_attendees" (
@@ -54,23 +56,33 @@ CREATE TABLE IF NOT EXISTS "event_attendees" (
 	"player_id"	integer,
 	"event_id"	integer,
 	"bye"	TINYINT,
-	PRIMARY KEY("id"),
-	UNIQUE("player_id","event_id"),
 	FOREIGN KEY("event_id") REFERENCES "events"("id"),
-	FOREIGN KEY("player_id") REFERENCES "players"("id")
+	FOREIGN KEY("player_id") REFERENCES "players"("id"),
+	PRIMARY KEY("id"),
+	UNIQUE("player_id","event_id")
+);
+DROP TABLE IF EXISTS "groups";
+CREATE TABLE IF NOT EXISTS "groups" (
+	"id"	INTEGER,
+	"event_id"	INTEGER,
+	"group_number"	INTEGER,
+	"round_number"	INTEGER,
+	FOREIGN KEY("event_id") REFERENCES "events"("id"),
+	PRIMARY KEY("id")
 );
 DROP TABLE IF EXISTS "player_groups";
 CREATE TABLE IF NOT EXISTS "player_groups" (
 	"id"	integer,
-	"group_number"	INTEGER,
-	"event_id"	INTEGER,
+	"group_id"	INTEGER,
 	"player_id"	INTEGER,
-	"round_number"	INTEGER,
-	PRIMARY KEY("id"),
-	UNIQUE("group_number","event_id","player_id"),
+	"event_id"	INTEGER,
+	FOREIGN KEY("group_id") REFERENCES "groups"("id"),
 	FOREIGN KEY("player_id") REFERENCES "players"("id"),
-	FOREIGN KEY("event_id") REFERENCES "events"("id")
+	FOREIGN KEY("event_id") REFERENCES "events"("id"),
+	PRIMARY KEY("id"),
+	UNIQUE("group_id","player_id")
 );
 
-
+INSERT INTO "pairing_methods" ("id","name") VALUES (1,'Open 5 Rounds'),
+ (2,'Ladder 3 Rounds');
 COMMIT;

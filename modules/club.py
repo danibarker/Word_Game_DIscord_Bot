@@ -148,9 +148,9 @@ def set_player_groups(group, group_number, event_id):
     group_id = list(group_id_query)[0][0]
     for player in group:
         player_id = player['id']
-        value_list = f'{group_id},{player_id}' 
+        value_list = f'{group_id},{player_id},{event_id}' 
         cursor.execute(f'REPLACE INTO \
-        player_groups(group_id, player_id) \
+        player_groups(group_id, player_id, event_id) \
         VALUES({value_list})')
 
 def create_groups(event_id):
@@ -215,33 +215,50 @@ def start_event(given_byes=()):
             msg += bye_message
     return msg 
 
+def check_for_end_of_round(group_number):
+    # get current round number for group
+
+    # check for byes in group
+
+    # count number of results with that group and round
+    # add 1 for a bye in that group
+
+    # check number of players in group
+
+    # if # results == # players:
+    #     move group to next round
+    #     calculate pairings for group
+    #     return pairing message
+    # else: return None
+    pass
 
 def parse_result(s):
     event_id, _ = get_event()
     p2, score_1, p2, score_2 = s.split(' ')
+    
     player1 = find_player(p1)
     player2 = find_player(p2)
+
+    # player with lower id is player 1 to prevent possible duplicate results
+    if player2 < player1:
+        player1,score_1,player2,score_2 = player2,score_2,player1,score_1
+    group_number_query = f'SELECT group_id FROM player_groups WHERE \
+        event_id = {event_id} AND player_id = {player1}'  
+
+    cursor = connection.cursor()
+    group_number = list(cursor.execute(group_number_query))[0][0]
+
     enter_result_query = f'REPLACE INTO results (score_1, score_2, \
         player1, player2, round, group_id, event_id) \
-        VALUES ({score_1},{score_2},{player1},{player2},{round}, \
-        (SELECT id FROM groups WHERE \
-        event_id = {event_id} AND group_number = {group_number}), {event_id});'
+        VALUES ({score_1},{score_2},{player1},{player2},\
+        (SELECT round_number FROM groups WHERE group_id=\
+        group_number), group_number);'
+    
+    cursor.execute(enter_results_query)
+    
+    pairing_message = check_for_end_of_round(group_number)
+    message = f'```'
     return message, pairing_message
-
-
-def get_next_result_id():
-    
-    return result_id
-
-
-def next_round(group=0):
-    
-    return group, pairing_message
-
-
-def prev_round(group=0):
-    
-    return group, group_round_number[group]
 
 
 def delete_result(id_number):
