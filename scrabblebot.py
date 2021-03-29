@@ -1,6 +1,8 @@
 from discord.ext import commands
+
 from modules.club import bot_token
-client = commands.Bot(command_prefix='!',case_insensitive=True)
+
+client = commands.Bot(command_prefix='!', case_insensitive=True)
 channel_id = 0
 COGS = [
     'attendance_cog',
@@ -18,7 +20,6 @@ async def on_ready():
             client.load_extension(f'cogs.{filename}')
         except Exception as e:
             print(e)
-
 
 
 @client.command()

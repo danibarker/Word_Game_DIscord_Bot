@@ -44,11 +44,11 @@ CREATE TABLE IF NOT EXISTS "results" (
 	"player1"	INTEGER,
 	"player2"	INTEGER,
 	FOREIGN KEY("event_id") REFERENCES "events"("id"),
-	FOREIGN KEY("group_id") REFERENCES "groups"("id"),
-	FOREIGN KEY("player1") REFERENCES "players"("id"),
-	FOREIGN KEY("player2") REFERENCES "players"("id"),
+	UNIQUE("player1","player2","round"),
 	PRIMARY KEY("id"),
-	UNIQUE("player1","player2","round")
+	FOREIGN KEY("player1") REFERENCES "players"("id"),
+	FOREIGN KEY("group_id") REFERENCES "groups"("id"),
+	FOREIGN KEY("player2") REFERENCES "players"("id")
 );
 DROP TABLE IF EXISTS "event_attendees";
 CREATE TABLE IF NOT EXISTS "event_attendees" (
@@ -56,10 +56,10 @@ CREATE TABLE IF NOT EXISTS "event_attendees" (
 	"player_id"	integer,
 	"event_id"	integer,
 	"bye"	TINYINT,
-	FOREIGN KEY("event_id") REFERENCES "events"("id"),
-	FOREIGN KEY("player_id") REFERENCES "players"("id"),
+	UNIQUE("player_id","event_id"),
 	PRIMARY KEY("id"),
-	UNIQUE("player_id","event_id")
+	FOREIGN KEY("player_id") REFERENCES "players"("id"),
+	FOREIGN KEY("event_id") REFERENCES "events"("id")
 );
 DROP TABLE IF EXISTS "groups";
 CREATE TABLE IF NOT EXISTS "groups" (
@@ -67,8 +67,8 @@ CREATE TABLE IF NOT EXISTS "groups" (
 	"event_id"	INTEGER,
 	"group_number"	INTEGER,
 	"round_number"	INTEGER,
-	FOREIGN KEY("event_id") REFERENCES "events"("id"),
-	PRIMARY KEY("id")
+	PRIMARY KEY("id"),
+	FOREIGN KEY("event_id") REFERENCES "events"("id")
 );
 DROP TABLE IF EXISTS "player_groups";
 CREATE TABLE IF NOT EXISTS "player_groups" (
@@ -76,11 +76,11 @@ CREATE TABLE IF NOT EXISTS "player_groups" (
 	"group_id"	INTEGER,
 	"player_id"	INTEGER,
 	"event_id"	INTEGER,
-	FOREIGN KEY("group_id") REFERENCES "groups"("id"),
-	FOREIGN KEY("player_id") REFERENCES "players"("id"),
-	FOREIGN KEY("event_id") REFERENCES "events"("id"),
+	UNIQUE("group_id","player_id"),
 	PRIMARY KEY("id"),
-	UNIQUE("group_id","player_id")
+	FOREIGN KEY("group_id") REFERENCES "groups"("id"),
+	FOREIGN KEY("event_id") REFERENCES "events"("id"),
+	FOREIGN KEY("player_id") REFERENCES "players"("id")
 );
 
 INSERT INTO "pairing_methods" ("id","name") VALUES (1,'Open 5 Rounds'),
