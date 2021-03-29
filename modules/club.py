@@ -17,6 +17,12 @@ f.close()
 
 
 def create_event():
+    '''
+    adds an event into the db with a pairing
+    method based on the day of the week
+    returns None
+    '''
+
     day = time.strftime('%A')
     date = time.strftime('%Y-%m-%d')
     if day == 'Thursday':
@@ -30,10 +36,17 @@ def create_event():
     cursor.execute(sql)
 
 
-def get_event():
+def get_event(event_date=None):
+    '''
+    returns event id for the current event
+    creates a new event if a date is not specified
+    or event for today does not exist
+    '''
+
     cursor = connection.cursor()
-    date = time.strftime('%Y-%m-%d')
-    create_event()
+    date = event_date or time.strftime('%Y-%m-%d')
+    if not event_date:
+        create_event()
 
     m = list(cursor.execute(
         f"SELECT id, pairing_method FROM events WHERE date = '{date}'"))
@@ -41,6 +54,13 @@ def get_event():
 
 
 def find_player_id(query):
+    '''
+    finds a player id from the database
+    takes in a string that will match either
+    discord id, isc username, or full_name
+
+    returns the id found
+    '''
     cursor = connection.cursor()
     player_query = list(cursor.execute(
         f"SELECT id FROM players WHERE UPPER(discord) LIKE '%{query}%' OR \
@@ -51,13 +71,21 @@ def find_player_id(query):
         return id
     if len(player_query) == 0:
         raise PlayerDoesntExist('Player does not exist, use discord username')
-    else:
-        raise AmbiguousRequest(
-            f'Please be more specific, \
+    raise AmbiguousRequest(
+        f'Please be more specific,\
             {query} matched more than one player')
 
 
 def sign_in(player):
+    '''
+    adds a player to the event attendees table in the db
+    takes in a string that can be their name, isc username,
+    discord username, as long as it is specific enough
+
+    returns a message saying the player has signed in or
+    an error message if player doesn't exist in db or 
+    matched more than one player
+    '''
     try:
         event_id = get_event()[0]
         player_id = find_player_id(player)
@@ -74,6 +102,17 @@ def sign_in(player):
 
 
 def sign_out(player):
+    '''
+    removes a player from the event_attendees table
+    in the db.
+
+    takes a string representing all or part of full name,
+    discord username, isc username
+
+    returns a message saying they were signed out
+    or an error if that player was not found
+    or query was not specific enough
+    '''
     try:
         event_id = get_event()[0]
         player_id = find_player_id(player)
@@ -88,6 +127,12 @@ def sign_out(player):
 
 
 def get_players():
+    '''
+    gets the players in the event attendees table
+    in the db for the current event.
+
+    returns an array of dicts, one for each player
+    '''
     event_id, pairing_method = get_event()
     cursor = connection.cursor()
     if pairing_method == 1:
@@ -95,17 +140,24 @@ def get_players():
         FROM event_attendees e INNER JOIN players p \
         ON e.player_id = p.id WHERE event_id = {event_id} \
         ORDER BY p.rating DESC ")
-        
+
     elif pairing_method == 2:
         players = cursor.execute(f"SELECT p.* \
         FROM event_attendees e INNER JOIN players p \
         ON e.player_id = p.id WHERE event_id = {event_id} \
         ORDER BY p.rung ")
-    columns = ['id','first_name','last_name','discord','isc','abbreviation','rating','rung','full_name','current_opponent']
+    columns = ['id', 'first_name', 'last_name', 'discord', 'isc',
+               'abbreviation', 'rating', 'rung', 'full_name', 'current_opponent']
     return fo.query_to_dict_array(columns, players)
 
 
 def get_attendance():
+    '''
+    gets the players currently signed in and
+    formats the list
+
+    returns a string
+    '''
     try:
         players = get_players()
         msg = f'```\n{len(players)} players signed in'
@@ -121,6 +173,11 @@ def get_attendance():
 
 
 def set_byes(groups, num_of_byes, bye_group_number):
+    '''
+    updates event_attendees table setting the bye column to the round
+    that the player is assigned to
+    returns a string listing the byes
+    '''
     cursor = connection.cursor()
 
     byes = random.sample(groups[bye_group_number], num_of_byes)
@@ -133,6 +190,13 @@ def set_byes(groups, num_of_byes, bye_group_number):
 
 
 def set_player_groups(group, group_number, event_id):
+    '''
+    updates the db adding a group of the given group of players
+    takes in an array of player dicts, a group number,
+    and an event id
+
+    returns the newly created group record's id
+    '''
     cursor = connection.cursor()
     cursor.execute(f'REPLACE INTO groups (event_id, group_number, round_number) \
     VALUES({event_id},{group_number},1)')
@@ -145,10 +209,16 @@ def set_player_groups(group, group_number, event_id):
         value_list = f'{group_id},{player_id},{event_id}'
         cursor.execute(f'REPLACE INTO \
         player_groups(group_id, player_id, event_id) \
-        VALUES({value_list})')
+        VALUES({value_list}) ')
+    return group_id
 
 
 def create_groups(event_id):
+    '''
+    groups players that are signed in to a particular event
+    returns a string containing the list of players by group
+    and a list of group ids
+    '''
     players = get_players()
     num_players = len(players)
     bye_message = ''
@@ -181,18 +251,25 @@ def create_groups(event_id):
 
     if distribution % 2 == 1:
         bye_message = set_byes(groups, 3, bye_group_number)
+
+    group_ids = []
     for i, group in enumerate(groups):
         group_number = i + 1
-        set_player_groups(group, group_number, event_id)
-
+        group_id = set_player_groups(group, group_number, event_id)
+        group_ids.append(group_id)
         msg += f"Group {group_number} \
         {', '.join(player['full_name'] for player in group)}\n"
     msg += bye_message
-    return msg
+    return msg, group_ids
 
 
-def start_event(given_byes=()):
-    msg = "Event Started\n"
+def start_event():
+    '''
+    starts an event
+    returns a string containing the list of groups
+    and each player in those groups and a list of 
+    associated group ids from the db
+    '''
     event_id, pairing_method = get_event()
     cursor = connection.cursor()
     players_query = cursor.execute(
@@ -200,13 +277,17 @@ def start_event(given_byes=()):
             ON e.player_id = p.id \
             WHERE e.event_id = {event_id}'
     )
-    columns = ['id','first_name','last_name','discord','isc','abbreviation','rating','rung','full_name','current_opponent']
+    columns = ['id', 'first_name', 'last_name', 'discord', 'isc',
+               'abbreviation', 'rating', 'rung', 'full_name', 'current_opponent']
     players = fo.query_to_dict_array(columns, players_query)
     if pairing_method == 2:
-        msg += create_groups(event_id)
+        msg, group_ids = create_groups(event_id)
     elif pairing_method == 1:
-        set_player_groups(players, 1, event_id)
+        group_ids = [set_player_groups(players, 1, event_id)]
         if len(players) % 2 == 1:
             bye_message = set_byes([players], 5)
-            msg += bye_message
-    return msg
+            msg = bye_message
+        else:
+            msg = ""
+    msg = "Event Started\n" + msg
+    return msg, group_ids
