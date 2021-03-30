@@ -7,6 +7,15 @@ import modules.club as club
 connection = apsw.Connection("data/dbfile.db")
 
 
+def set_opponents(p1, p2):
+    '''
+    updates the db setting the inputted player ids as each other's opponents
+    '''
+    cursor = connection.cursor()
+    cursor.execute(f'UPDATE players SET current_opponent = {p1} WHERE id = {p2};\
+        UPDATE players SET current_opponent = {p2} WHERE id = {p1};')
+
+
 def get_pairings_text(_round_number, _group_id, _score_cards):
     '''
     returns formatted pairings for a particular round for a particular group.

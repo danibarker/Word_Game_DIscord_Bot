@@ -7,10 +7,8 @@ from utilities.scrabble_classes import player_decoder, results_decoder
 connection = apsw.Connection("data/dbfile.db")
 
 def query_to_dict_array(columns, results):
-    print(columns, 'columns',results,'results')
     new_array = []
     for item in results:
-        print(item,'item')
         new_dict = {}
         for i, column in enumerate(item):
             new_dict[columns[i]] = column if column else 0

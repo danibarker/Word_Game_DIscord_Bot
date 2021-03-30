@@ -1,10 +1,10 @@
 import apsw
 import utilities.fileio as fo
 import utilities.pairings as pairings
-
+import utilities.isc_scraper as isc
 from modules.queries import score_card_query
 import modules.club as club
-
+import time
 connection = apsw.Connection("data/dbfile.db")
 
 
@@ -64,8 +64,8 @@ def parse_result(s):
     takes a string as input, formatted:
     "player1 score1 player2 score2"
 
-    returns a message string with the result, 
-    boolean for if a round is over, 
+    returns a message string with the result,
+    boolean for if a round is over,
     updated round number
     and group_id
     '''
@@ -118,11 +118,61 @@ def get_player_last_game(name, rnd=1):
     '''
     connect to ISC get result of a given players match
     converts result to string for parse_result function
-    returns a message string with the result, 
-    boolean for if a round is over, 
+
+    penalty kwarg is set on isc.get_games
+    to deduct points once the timer
+    on ISC goes below 10:00 remaining
+    unless it is Tuesday
+    (don't like this here, probably move to the discord 
+    command function instead so it's more reusable)
+
+    returns a message string with the result,
+    boolean for if a round is over,
     updated round number and group_id
     '''
-    return msg, end_of_ound, round_number, group_id
+    round_number, player_isc, opp_isc = get_iscs_and_round_number(name)
+    message = ''
+    player_list = [[player_isc, opp_isc]]
+    results = isc.get_games(
+        player_list,
+        penalty=time.strftime('%A') != 'Tuesday',
+        quackle=True, start_pos=1, round_number=round_number
+    )
+    for result in results:
+        if result['success']:
+            message, end_of_round, round_number, group_id = parse_result(
+                result['message'])
+        else:
+            message = f"{result['message']}"
+
+    return message, end_of_round, round_number, group_id
+
+
+def get_iscs_and_round_number(name):
+    '''
+    connects to the db and finds the players id
+    and current opponent's id
+    and their round number
+    returns them as a tuple
+    '''
+    event_id, _ = club.get_event()
+    cursor = connection.cursor()
+    get_iscs = cursor.execute(
+        f"SELECT g.round_number, p1.isc, p2.isc FROM players p1\
+        INNER JOIN players p2\
+        ON p1.current_opponent = p2.id\
+        INNER JOIN player_groups pg\
+        ON pg.player_id=p1.id\
+        INNER JOIN groups g\
+        ON g.id=pg.group_id\
+        WHERE g.event_id = {event_id} AND\
+        (p1.full_name LIKE '%{name}%'\
+        OR p1.discord LIKE '%{name}%'\
+        OR p1.isc LIKE '%{name}%') ")
+
+    round_number, player_isc, opp_isc = list(get_iscs)[0]
+
+    return (round_number, player_isc, opp_isc)
 
 
 def delete_result(id_number):
@@ -139,8 +189,7 @@ def delete_result(id_number):
 
 def show_summary(event_date=None):
     '''
-    gets scorecards for a particular event date
-    or the current event if None and formats
+    gets scorecards for a particular event date or the current event if None and formats
     them into a string
 
     returns the results summary string
@@ -175,22 +224,18 @@ def show_summary(event_date=None):
 
 def get_results(event_date=None):
     '''
-    gets list of results from the database
-    for a particular event
-    and formats them into a string
+    gets list of results from the database for a particular event and formats them into a string
     '''
-
     return msg
 
 
 def get_scorecards(event_date=None):
     '''
-    gets scorecards from the database
-    for a particular event date
+    gets scorecards from the database for a particular event date
     returns list of players scorecards
-    [{'group_number':1,'round_number':2,'max':500, 'average':435,'player_id':15, 
-    'full_name':"Danielle Barker", 'group_id':17, 'byes':1, 'spread':765, 
-    'wins':3, 'games':5,'rating':940}, ...]
+    [{'group_number': 1, 'round_number': 2, 'max': 500, 'average': 435, 'player_id': 15,
+      'full_name': "Danielle Barker", 'group_id': 17, 'byes': 1, 'spread': 765,
+      'wins': 3, 'games': 5, 'rating': 940}, ...]
     '''
 
     event_id, _ = club.get_event(event_date)

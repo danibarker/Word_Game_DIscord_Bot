@@ -48,10 +48,10 @@ def score_card_query(event_id):
             WHERE r.event_id = {event_id} GROUP BY player2  ) r
 
        
-        GROUP BY player_id
-        ORDER BY group_id, wins desc, spread DESC) s
+        GROUP BY player_id) s
    ON s.player_id = e.player_id
    LEFT JOIN players p 
 	ON p.id = e.player_id  
 WHERE event_id = {event_id}
+ORDER BY group_id, wins desc, spread DESC
 """
